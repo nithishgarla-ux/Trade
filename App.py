@@ -191,30 +191,54 @@ def execute_trade(wallet, name, symbol, price, decision):
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
     
-    api_key = st.text_input(
-        "🤖 Anthropic API Key",
-        type="password",
-        placeholder="sk-ant-..."
+    # Auto-load from Streamlit Secrets
+    # No need to type every time!
+    api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+    gmail = st.secrets.get("GMAIL", "")
+    app_password = st.secrets.get("APP_PASSWORD", "")
+    
+    # Show connection status
+    if api_key:
+        st.success("✅ AI Connected")
+    else:
+        api_key = st.text_input(
+            "🤖 Anthropic API Key",
+            type="password",
+            placeholder="sk-ant-..."
+        )
+    
+    if gmail and app_password:
+        st.success("✅ Email Connected")
+        email_enabled = True
+    else:
+        st.warning("⚠️ Add secrets in Streamlit settings")
+        email_enabled = False
+        gmail = st.text_input("Gmail", placeholder="yourname@gmail.com")
+        app_password = st.text_input("App Password", type="password")
+    
+    st.markdown("---")
+    
+    run_bot = st.button(
+        "🤖 Run AI Trading Bot",
+        use_container_width=True,
+        type="primary"
+    )
+    
+    test_email = st.button(
+        "📧 Send Test Email",
+        use_container_width=True
     )
     
     st.markdown("---")
-    st.markdown("### 📧 Email Alerts")
-    
-    gmail = st.text_input(
-        "Your Gmail",
-        placeholder="yourname@gmail.com"
-    )
-    app_password = st.text_input(
-        "Gmail App Password",
-        type="password",
-        placeholder="xxxx xxxx xxxx xxxx"
-    )
-    
-    email_enabled = gmail and app_password
-    if email_enabled:
-        st.success("✅ Email alerts active!")
-    else:
-        st.info("👆 Add Gmail details for alerts")
+    st.markdown("### 📊 Info")
+    st.markdown("""
+    - Starting capital: ₹1,00,000
+    - Tracks 5 NSE stocks
+    - AI powered by Claude
+    - Refreshes every 60s
+    - Email alerts on trades
+    """)
+    st.caption(f"🕐 {datetime.now().strftime('%d %b %Y, %I:%M %p')}")
     
     st.markdown("---")
     
