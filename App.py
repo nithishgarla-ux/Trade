@@ -218,14 +218,16 @@ with st.sidebar:
     
     st.markdown("---")
     
-    run_bot = st.button(
+        run_bot = st.button(
         "🤖 Run AI Trading Bot",
+        key="run_bot_btn",
         use_container_width=True,
         type="primary"
     )
     
-    test_email = st.button(
+        test_email = st.button(
         "📧 Send Test Email",
+        key="test_email_btn",
         use_container_width=True
     )
     
