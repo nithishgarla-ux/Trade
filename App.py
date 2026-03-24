@@ -1,7 +1,3 @@
-# Nitish's AI Trading Bot - Complete Version
-# Includes: Live prices + AI analysis + 
-# Paper trading + Email alerts + Dashboard
-
 import streamlit as st
 import yfinance as yf
 import anthropic
@@ -12,9 +8,6 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from datetime import datetime
 
-# -----------------------------------------------
-# PAGE SETUP
-# -----------------------------------------------
 st.set_page_config(
     page_title="Nitish's Trading Bot",
     page_icon="⚡",
@@ -23,32 +16,19 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-    .stApp { background-color: #070e16; color: #c8dde8; }
-    div[data-testid="stMetricValue"] { color: white; font-size: 22px; }
-    .trade-card {
-        background: #0f1923;
-        border-radius: 10px;
-        padding: 14px 18px;
-        margin-bottom: 8px;
-        border: 1px solid #1e2d3d;
-    }
+.stApp { background-color: #070e16; color: #c8dde8; }
+div[data-testid="stMetricValue"] { color: white; font-size: 22px; }
 </style>
 """, unsafe_allow_html=True)
 
-# -----------------------------------------------
-# STOCKS
-# -----------------------------------------------
 STOCKS = {
-    "Reliance":  "RELIANCE.NS",
-    "TCS":       "TCS.NS",
-    "Infosys":   "INFY.NS",
+    "Reliance": "RELIANCE.NS",
+    "TCS": "TCS.NS",
+    "Infosys": "INFY.NS",
     "HDFC Bank": "HDFCBANK.NS",
-    "Wipro":     "WIPRO.NS"
+    "Wipro": "WIPRO.NS"
 }
 
-# -----------------------------------------------
-# PORTFOLIO FUNCTIONS
-# -----------------------------------------------
 def load_portfolio():
     default = {
         "cash": 100000,
@@ -68,11 +48,7 @@ def save_portfolio(wallet):
     with open("portfolio.json", "w") as f:
         json.dump(wallet, f, indent=2)
 
-# -----------------------------------------------
-# EMAIL FUNCTION
-# -----------------------------------------------
 def send_email(gmail, app_password, subject, body):
-    """Send email alert"""
     try:
         msg = MIMEMultipart()
         msg["From"] = gmail
@@ -89,9 +65,6 @@ def send_email(gmail, app_password, subject, body):
         st.warning(f"Email failed: {e}")
         return False
 
-# -----------------------------------------------
-# FETCH PRICES
-# -----------------------------------------------
 @st.cache_data(ttl=60)
 def fetch_prices():
     prices = {}
@@ -103,20 +76,11 @@ def fetch_prices():
                 "symbol": symbol,
                 "price": info.get("currentPrice", 0),
                 "change": info.get("regularMarketChangePercent", 0),
-                "high": info.get("dayHigh", 0),
-                "low": info.get("dayLow", 0),
             }
         except:
-            prices[name] = {
-                "symbol": symbol,
-                "price": 0, "change": 0,
-                "high": 0, "low": 0
-            }
+            prices[name] = {"symbol": symbol, "price": 0, "change": 0}
     return prices
 
-# -----------------------------------------------
-# AI DECISION
-# -----------------------------------------------
 def get_ai_decision(name, price, api_key):
     try:
         client = anthropic.Anthropic(api_key=api_key)
@@ -129,15 +93,14 @@ def get_ai_decision(name, price, api_key):
             }]
         )
         decision = msg.content[0].text.strip().upper()
-        if "BUY" in decision: return "BUY"
-        elif "SELL" in decision: return "SELL"
+        if "BUY" in decision:
+            return "BUY"
+        elif "SELL" in decision:
+            return "SELL"
         return "HOLD"
     except:
         return "HOLD"
 
-# -----------------------------------------------
-# EXECUTE TRADE
-# -----------------------------------------------
 def execute_trade(wallet, name, symbol, price, decision):
     if decision == "BUY":
         amount = wallet["cash"] * 0.20
@@ -161,9 +124,8 @@ def execute_trade(wallet, name, symbol, price, decision):
                 "price": price,
                 "total": cost
             })
-            return f"Bought {shares} shares @ ₹{price:,.2f} = ₹{cost:,.2f}"
+            return f"Bought {shares} shares @ ₹{price:,.2f}"
         return "Not enough cash"
-
     elif decision == "SELL":
         if name in wallet["holdings"]:
             shares = wallet["holdings"][name]["shares"]
@@ -185,89 +147,34 @@ def execute_trade(wallet, name, symbol, price, decision):
         return "No shares to sell"
     return "Holding"
 
-# -----------------------------------------------
-# SIDEBAR SETTINGS
-# -----------------------------------------------
+# SIDEBAR
+api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
+gmail = st.secrets.get("GMAIL", "")
+app_password = st.secrets.get("APP_PASSWORD", "")
+email_enabled = bool(gmail and app_password)
+
 with st.sidebar:
     st.markdown("### ⚙️ Settings")
-    
-    # Auto-load from Streamlit Secrets
-    # No need to type every time!
-    api_key = st.secrets.get("ANTHROPIC_API_KEY", "")
-    gmail = st.secrets.get("GMAIL", "")
-    app_password = st.secrets.get("APP_PASSWORD", "")
-    
-    # Show connection status
     if api_key:
         st.success("✅ AI Connected")
     else:
-        api_key = st.text_input(
-            "🤖 Anthropic API Key",
-            type="password",
-            placeholder="sk-ant-..."
-        )
-    
-    if gmail and app_password:
+        api_key = st.text_input("🤖 Anthropic API Key", type="password", placeholder="sk-ant-...")
+    if email_enabled:
         st.success("✅ Email Connected")
-        email_enabled = True
     else:
         st.warning("⚠️ Add secrets in Streamlit settings")
-        email_enabled = False
         gmail = st.text_input("Gmail", placeholder="yourname@gmail.com")
         app_password = st.text_input("App Password", type="password")
-    
+        email_enabled = bool(gmail and app_password)
     st.markdown("---")
-        run_bot = st.button(
-        "🤖 Run AI Trading Bot",
-        key="run_bot_btn",
-        use_container_width=True,
-        type="primary"
-    )
-
-    test_email = st.button(
-        "📧 Send Test Email",
-        key="test_email_btn",
-        use_container_width=True
-    )
-
+    run_bot = st.button("🤖 Run AI Trading Bot", key="run_bot_btn", use_container_width=True, type="primary")
+    test_email = st.button("📧 Send Test Email", key="test_email_btn", use_container_width=True)
     st.markdown("---")
     st.markdown("### 📊 Info")
-    st.markdown("""
-    - Starting capital: ₹1,00,000
-    - Tracks 5 NSE stocks
-    - AI powered by Claude
-    - Refreshes every 60s
-    - Email alerts on trades
-    """)
-    st.caption(f"🕐 {datetime.now().strftime('%d %b %Y, %I:%M %p')}")
-    
-    st.markdown("---")
-    
-    run_bot = st.button(
-        "🤖 Run AI Trading Bot",
-        use_container_width=True,
-        type="primary"
-    )
-    
-    test_email = st.button(
-        "📧 Send Test Email",
-        use_container_width=True
-    )
-    
-    st.markdown("---")
-    st.markdown("### 📊 Info")
-    st.markdown("""
-    - Starting capital: ₹1,00,000
-    - Tracks 5 NSE stocks
-    - AI powered by Claude
-    - Refreshes every 60s
-    - Email alerts on trades
-    """)
+    st.markdown("- Starting capital: ₹1,00,000\n- Tracks 5 NSE stocks\n- AI powered by Claude\n- Refreshes every 60s")
     st.caption(f"🕐 {datetime.now().strftime('%d %b %Y, %I:%M %p')}")
 
-# -----------------------------------------------
 # LOAD DATA
-# -----------------------------------------------
 wallet = load_portfolio()
 prices = fetch_prices()
 
@@ -278,63 +185,38 @@ total_invested = sum(
 total_value = wallet["cash"] + total_invested
 total_pnl = total_value - 100000
 
-# -----------------------------------------------
 # HEADER
-# -----------------------------------------------
 st.markdown("""
-<div style='background:#08111a;padding:20px;border-radius:12px;
-margin-bottom:24px;border:1px solid #0e1e2d'>
-    <div style='display:flex;align-items:center;gap:12px'>
-        <div style='background:linear-gradient(135deg,#00ff88,#4da6ff);
-        width:44px;height:44px;border-radius:10px;
-        display:flex;align-items:center;justify-content:center;font-size:22px'>⚡</div>
-        <div>
-            <div style='font-size:20px;font-weight:700;
-            color:#fff;font-family:monospace'>NITISH'S AI TRADING BOT</div>
-            <div style='font-size:11px;color:#3a5a74;
-            letter-spacing:2px'>AI POWERED • NSE INDIA • PAPER TRADING</div>
-        </div>
-    </div>
-</div>
+<div style='background:#08111a;padding:20px;border-radius:12px;margin-bottom:24px;border:1px solid #0e1e2d'>
+<div style='display:flex;align-items:center;gap:12px'>
+<div style='background:linear-gradient(135deg,#00ff88,#4da6ff);width:44px;height:44px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:22px'>⚡</div>
+<div>
+<div style='font-size:20px;font-weight:700;color:#fff;font-family:monospace'>NITISH'S AI TRADING BOT</div>
+<div style='font-size:11px;color:#3a5a74;letter-spacing:2px'>AI POWERED • NSE INDIA • PAPER TRADING</div>
+</div></div></div>
 """, unsafe_allow_html=True)
 
-# -----------------------------------------------
-# TEST EMAIL BUTTON
-# -----------------------------------------------
+# TEST EMAIL
 if test_email:
     if not email_enabled:
-        st.error("⚠️ Add your Gmail and App Password in sidebar first!")
+        st.error("⚠️ Add Gmail details first!")
     else:
         with st.spinner("Sending test email..."):
-            success = send_email(
-                gmail, app_password,
-                "Bot is alive! 🎉",
-                f"""
-Your AI Trading Bot dashboard is live!
-
-🌐 Dashboard: tw3zdrzpbk6rqdemq3hqno.streamlit.app
-📅 Time: {datetime.now().strftime('%d %b %Y, %I:%M %p')}
-
-Portfolio Status:
+            sent = send_email(gmail, app_password, "Bot is alive! 🎉", f"""
+Your AI Trading Bot is live!
+📅 {datetime.now().strftime('%d %b %Y, %I:%M %p')}
 💵 Cash: ₹{wallet['cash']:,.2f}
 💰 Total Value: ₹{total_value:,.2f}
 📈 P&L: ₹{total_pnl:+,.2f}
-📋 Total Trades: {len(wallet['trades'])}
-
-Your bot is watching:
-• Reliance, TCS, Infosys, HDFC Bank, Wipro
-
-Built with Claude AI + yFinance 🇮🇳
-                """
-            )
-        if success:
-            st.success("✅ Test email sent! Check your inbox!")
+📋 Trades: {len(wallet['trades'])}
+🌐 Dashboard: tw3zdrzpbk6rqdemq3hqno.streamlit.app
+            """)
+        if sent:
+            st.success("✅ Test email sent!")
         else:
-            st.error("❌ Email failed — check your Gmail and App Password")
+            st.error("❌ Email failed")
 
-# -----------------------------------------------
 # PORTFOLIO SUMMARY
-# -----------------------------------------------
 st.markdown("### 💼 Portfolio Summary")
 c1, c2, c3, c4, c5 = st.columns(5)
 with c1:
@@ -344,16 +226,13 @@ with c2:
 with c3:
     st.metric("💰 Total Value", f"₹{total_value:,.0f}")
 with c4:
-    pnl_color = "normal" if total_pnl >= 0 else "inverse"
     st.metric("📈 P&L", f"₹{total_pnl:+,.0f}")
 with c5:
     st.metric("📋 Trades", len(wallet["trades"]))
 
 st.markdown("---")
 
-# -----------------------------------------------
 # LIVE PRICES
-# -----------------------------------------------
 st.markdown("### 📡 Live NSE Prices")
 cols = st.columns(5)
 for i, (name, data) in enumerate(prices.items()):
@@ -367,96 +246,61 @@ for i, (name, data) in enumerate(prices.items()):
 
 st.markdown("---")
 
-# -----------------------------------------------
 # RUN BOT
-# -----------------------------------------------
 if run_bot:
     if not api_key:
-        st.error("⚠️ Enter your Anthropic API key in sidebar first!")
+        st.error("⚠️ No API key found!")
     else:
         st.markdown("### 🤖 AI Bot Running...")
         results = []
         actions_taken = []
         progress = st.progress(0)
-
         for i, (name, data) in enumerate(prices.items()):
             with st.spinner(f"Analyzing {name}..."):
-                decision = get_ai_decision(
-                    name, data["price"], api_key
-                )
-                result = execute_trade(
-                    wallet, name, data["symbol"],
-                    data["price"], decision
-                )
+                decision = get_ai_decision(name, data["price"], api_key)
+                result = execute_trade(wallet, name, data["symbol"], data["price"], decision)
                 results.append((name, data["price"], decision, result))
                 if decision != "HOLD":
-                    actions_taken.append(
-                        f"{decision} {name} @ ₹{data['price']:,.2f}"
-                    )
+                    actions_taken.append(f"{decision} {name} @ ₹{data['price']:,.2f}")
                 progress.progress((i + 1) / len(prices))
-
         save_portfolio(wallet)
-
-        # Show results
         st.markdown("#### Results:")
         for name, price, decision, result in results:
-            icon = "🟢" if decision=="BUY" else "🔴" if decision=="SELL" else "🟡"
+            icon = "🟢" if decision == "BUY" else "🔴" if decision == "SELL" else "🟡"
             st.write(f"{icon} **{name}** ₹{price:,.2f} → **{decision}** — {result}")
-
-        # Send email if enabled
         if email_enabled:
-            # Build email body
             holdings_text = ""
             for stock, info in wallet["holdings"].items():
                 if stock in prices:
                     val = info["shares"] * prices[stock]["price"]
                     pnl = (prices[stock]["price"] - info["avg_price"]) * info["shares"]
                     holdings_text += f"\n  • {stock}: {info['shares']} shares = ₹{val:,.2f} (P&L: ₹{pnl:+,.2f})"
-
             new_total = wallet["cash"] + sum(
-                wallet["holdings"][s]["shares"] * prices.get(s,{}).get("price",0)
+                wallet["holdings"][s]["shares"] * prices.get(s, {}).get("price", 0)
                 for s in wallet["holdings"] if s in prices
             )
-
-            if actions_taken:
-                subject = f"Trades executed! {', '.join(actions_taken[:2])}"
-                trades_text = "⚡ TRADES EXECUTED:\n" + "\n".join(f"  • {a}" for a in actions_taken)
-            else:
-                subject = "Daily Report — No trades today"
-                trades_text = "⏸️ No trades today — Claude says HOLD\n(Waiting for better market conditions)"
-
+            subject = f"Trades: {', '.join(actions_taken[:2])}" if actions_taken else "Daily Report — HOLD"
             body = f"""
 🤖 AI TRADING BOT REPORT
 {'='*40}
 📅 {datetime.now().strftime('%A, %d %B %Y, %I:%M %p')}
-
-💼 PORTFOLIO
-💵 Cash:        ₹{wallet['cash']:,.2f}
+💵 Cash: ₹{wallet['cash']:,.2f}
 💰 Total Value: ₹{new_total:,.2f}
-📈 Overall P&L: ₹{(new_total-100000):+,.2f}
-
-📦 HOLDINGS:{holdings_text if holdings_text else chr(10)+"  No holdings — all cash"}
-
-{trades_text}
-
-📋 Total trades all time: {len(wallet['trades'])}
+📈 P&L: ₹{(new_total - 100000):+,.2f}
+📦 Holdings:{holdings_text if holdings_text else chr(10)+'  No holdings'}
+{'⚡ Trades: ' + chr(10).join(actions_taken) if actions_taken else '⏸️ No trades today — HOLD'}
+📋 Total trades: {len(wallet['trades'])}
 {'='*40}
-🌐 Dashboard: tw3zdrzpbk6rqdemq3hqno.streamlit.app
+🌐 tw3zdrzpbk6rqdemq3hqno.streamlit.app
             """
-
-            with st.spinner("Sending email report..."):
+            with st.spinner("Sending email..."):
                 sent = send_email(gmail, app_password, subject, body)
             if sent:
-                st.success("📧 Email report sent to your inbox!")
-            else:
-                st.warning("⚠️ Email failed — check sidebar settings")
-
+                st.success("📧 Email report sent!")
         st.success("✅ Bot run complete!")
         st.rerun()
 
-# -----------------------------------------------
 # AI RECOMMENDATIONS
-# -----------------------------------------------
 st.markdown("### 🤖 Claude AI Recommendations")
 if api_key:
     cols = st.columns(5)
@@ -474,9 +318,7 @@ else:
 
 st.markdown("---")
 
-# -----------------------------------------------
 # HOLDINGS
-# -----------------------------------------------
 st.markdown("### 📦 Current Holdings")
 if wallet["holdings"]:
     cols = st.columns(len(wallet["holdings"]))
@@ -485,46 +327,35 @@ if wallet["holdings"]:
             current = prices.get(stock, {}).get("price", info["avg_price"])
             value = info["shares"] * current
             pnl = (current - info["avg_price"]) * info["shares"]
-            st.metric(
-                label=stock,
-                value=f"₹{value:,.0f}",
-                delta=f"P&L ₹{pnl:+,.0f}"
-            )
-            st.caption(
-                f"{info['shares']} shares @ ₹{info['avg_price']:,.2f}"
-            )
+            st.metric(label=stock, value=f"₹{value:,.0f}", delta=f"P&L ₹{pnl:+,.0f}")
+            st.caption(f"{info['shares']} shares @ ₹{info['avg_price']:,.2f}")
 else:
     st.info("💵 No holdings yet — run the bot to start trading!")
 
 st.markdown("---")
 
-# -----------------------------------------------
 # TRADE HISTORY
-# -----------------------------------------------
 st.markdown("### 📋 Trade History")
 if wallet["trades"]:
     for trade in reversed(wallet["trades"]):
-        col1, col2, col3, col4, col5 = st.columns([1,2,2,2,3])
-        with col1:
-            st.markdown("🟢 **BUY**" if trade["action"]=="BUY" else "🔴 **SELL**")
-        with col2:
+        c1, c2, c3, c4, c5 = st.columns([1, 2, 2, 2, 3])
+        with c1:
+            st.markdown("🟢 **BUY**" if trade["action"] == "BUY" else "🔴 **SELL**")
+        with c2:
             st.write(trade["stock"])
-        with col3:
+        with c3:
             st.write(f"{trade['shares']} shares")
-        with col4:
+        with c4:
             st.write(f"₹{trade['price']:,.2f}")
-        with col5:
+        with c5:
             pnl = trade.get("pnl", None)
             if pnl is not None:
                 icon = "🟢" if pnl >= 0 else "🔴"
                 st.write(f"P&L: {icon} ₹{pnl:+,.2f}")
             st.caption(trade["date"])
 else:
-    st.info("No trades yet — run the bot to start!")
+    st.info("No trades yet!")
 
-# -----------------------------------------------
-# FOOTER
-# -----------------------------------------------
 st.markdown("---")
 st.markdown(
     "<div style='text-align:center;color:#1e3048;font-size:11px'>"
@@ -533,4 +364,3 @@ st.markdown(
     "</div>",
     unsafe_allow_html=True
 )
-
