@@ -70,36 +70,165 @@ def fetch_prices():
     prices = {}
     for name, symbol in STOCKS.items():
         try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
+            # Get technical indicators
+            indicators = get_technical_indicators(symbol)
+            
+            if indicators:
+                prices[name] = {
+                    "symbol": symbol,
+                    "price": indicators["price"],
+                    "change": indicators["day_change"],
+                    "rsi": indicators["rsi"],
+                    "ma20": indicators["ma20"],
+                    "ma50": indicators["ma50"],
+                    "volume_ratio": indicators["volume_ratio"],
+                    "trend": "UP" if indicators["above_ma50"] else "DOWN",
+                    "indicators": indicators
+                }
+            else:
+                ticker = yf.Ticker(symbol)
+                info = ticker.info
+                prices[name] = {
+                    "symbol": symbol,
+                    "price": info.get("currentPrice", 0),
+                    "change": info.get("regularMarketChangePercent", 0),
+                    "rsi": 50,
+                    "ma20": 0,
+                    "ma50": 0,
+                    "volume_ratio": 1,
+                    "trend": "UNKNOWN",
+                    "indicators": None
+                }
+        except:
             prices[name] = {
                 "symbol": symbol,
-                "price": info.get("currentPrice", 0),
-                "change": info.get("regularMarketChangePercent", 0),
+                "price": 0, "change": 0,
+                "rsi": 50, "ma20": 0,
+                "ma50": 0, "volume_ratio": 1,
+                "trend": "UNKNOWN",
+                "indicators": None
             }
-        except:
-            prices[name] = {"symbol": symbol, "price": 0, "change": 0}
     return prices
 
-def get_ai_decision(name, price, api_key):
+
+def get_technical_indicators(symbol):
+    """Calculate RSI, Moving Averages, Volume for a stock"""
+    try:
+        ticker = yf.Ticker(symbol)
+        
+        # Get 6 months of daily data
+        hist = ticker.history(period="6mo")
+        
+        if len(hist) < 50:
+            return None
+            
+        # Current price
+        current_price = hist['Close'].iloc[-1]
+        
+        # Moving Averages
+        ma20 = hist['Close'].rolling(window=20).mean().iloc[-1]
+        ma50 = hist['Close'].rolling(window=50).mean().iloc[-1]
+        
+        # RSI Calculation
+        delta = hist['Close'].diff()
+        gain = delta.where(delta > 0, 0).rolling(window=14).mean()
+        loss = -delta.where(delta < 0, 0).rolling(window=14).mean()
+        rs = gain / loss
+        rsi = 100 - (100 / (1 + rs.iloc[-1]))
+        
+        # Volume ratio (today vs 20 day average)
+        avg_volume = hist['Volume'].rolling(window=20).mean().iloc[-1]
+        current_volume = hist['Volume'].iloc[-1]
+        volume_ratio = current_volume / avg_volume if avg_volume > 0 else 1
+        
+        # 52 week high and low
+        week52_high = hist['High'].max()
+        week52_low = hist['Low'].min()
+        
+        # Price change today
+        prev_close = hist['Close'].iloc[-2]
+        day_change = ((current_price - prev_close) / prev_close) * 100
+        
+        # Price vs moving averages
+        above_ma20 = current_price > ma20
+        above_ma50 = current_price > ma50
+        ma20_above_ma50 = ma20 > ma50
+        
+        return {
+            "price": round(current_price, 2),
+            "ma20": round(ma20, 2),
+            "ma50": round(ma50, 2),
+            "rsi": round(rsi, 1),
+            "volume_ratio": round(volume_ratio, 2),
+            "week52_high": round(week52_high, 2),
+            "week52_low": round(week52_low, 2),
+            "day_change": round(day_change, 2),
+            "above_ma20": above_ma20,
+            "above_ma50": above_ma50,
+            "ma20_above_ma50": ma20_above_ma50
+        }
+    except Exception as e:
+        return None
+
+def get_ai_decision(name, price, api_key, indicators=None):
+    """Ask Claude with full technical data"""
     try:
         client = anthropic.Anthropic(api_key=api_key)
+        
+        # Build rich prompt with all indicators
+        if indicators:
+            # Determine trend
+            if indicators['above_ma20'] and indicators['above_ma50'] and indicators['ma20_above_ma50']:
+                trend = "STRONG UPTREND"
+            elif indicators['above_ma20'] and indicators['above_ma50']:
+                trend = "UPTREND"
+            elif not indicators['above_ma20'] and not indicators['above_ma50']:
+                trend = "DOWNTREND"
+            else:
+                trend = "MIXED/SIDEWAYS"
+                
+            prompt = f"""You are an expert Indian stock market trader.
+
+Stock: {name}
+Current Price: ₹{indicators['price']}
+Today's Change: {indicators['day_change']:+.2f}%
+
+TECHNICAL INDICATORS:
+• RSI (14-day): {indicators['rsi']} 
+  (Below 30 = oversold/BUY zone, Above 70 = overbought/SELL zone)
+• MA20: ₹{indicators['ma20']} | Price {'ABOVE' if indicators['above_ma20'] else 'BELOW'} MA20
+• MA50: ₹{indicators['ma50']} | Price {'ABOVE' if indicators['above_ma50'] else 'BELOW'} MA50
+• Volume: {indicators['volume_ratio']}x average 
+  (Above 1.5x = strong conviction)
+• 52W High: ₹{indicators['week52_high']} | 52W Low: ₹{indicators['week52_low']}
+• Trend: {trend}
+
+TRADING RULES TO FOLLOW:
+BUY if: RSI < 40 AND price above MA20 AND volume > 1.2x
+SELL if: RSI > 70 OR price below MA50 OR loss > 5%
+HOLD if: mixed signals or unclear direction
+
+Reply with ONLY one word: BUY or SELL or HOLD"""
+
+        else:
+            prompt = f"Indian NSE stock: {name}, Price: ₹{price}. Reply ONLY: BUY or SELL or HOLD"
+        
         msg = client.messages.create(
             model="claude-haiku-4-5-20251001",
-            max_tokens=50,
-            messages=[{
-                "role": "user",
-                "content": f"Indian NSE stock: {name}, Price: ₹{price}. Reply ONLY: BUY or SELL or HOLD"
-            }]
+            max_tokens=10,
+            messages=[{"role": "user", "content": prompt}]
         )
+        
         decision = msg.content[0].text.strip().upper()
         if "BUY" in decision:
             return "BUY"
         elif "SELL" in decision:
             return "SELL"
         return "HOLD"
+        
     except:
         return "HOLD"
+
 
 def execute_trade(wallet, name, symbol, price, decision):
     if decision == "BUY":
@@ -233,18 +362,37 @@ with c5:
 st.markdown("---")
 
 # LIVE PRICES
-st.markdown("### 📡 Live NSE Prices")
-cols = st.columns(5)
-for i, (name, data) in enumerate(prices.items()):
-    with cols[i]:
+st.markdown("### 📡 Live NSE Prices & Indicators")
+for name, data in prices.items():
+    col1, col2, col3, col4, col5, col6 = st.columns([2,2,1,1,1,1])
+    with col1:
+        arrow = "📈" if data['change'] >= 0 else "📉"
         st.metric(
-            label=name,
+            label=f"{arrow} {name}",
             value=f"₹{data['price']:,.2f}",
-            delta=f"{data['change']:+.2f}%",
-            delta_color="normal" if data['change'] >= 0 else "inverse"
+            delta=f"{data['change']:+.2f}%"
         )
-
-st.markdown("---")
+    with col2:
+        trend_color = "🟢" if data['trend'] == "UP" else "🔴"
+        st.markdown(f"**Trend**")
+        st.markdown(f"{trend_color} {data['trend']}")
+    with col3:
+        rsi = data['rsi']
+        rsi_color = "🟢" if rsi < 40 else "🔴" if rsi > 70 else "🟡"
+        st.markdown(f"**RSI**")
+        st.markdown(f"{rsi_color} {rsi}")
+    with col4:
+        st.markdown(f"**MA20**")
+        st.markdown(f"₹{data['ma20']:,.0f}")
+    with col5:
+        st.markdown(f"**MA50**")
+        st.markdown(f"₹{data['ma50']:,.0f}")
+    with col6:
+        vol = data['volume_ratio']
+        vol_color = "🔥" if vol > 1.5 else "📊"
+        st.markdown(f"**Volume**")
+        st.markdown(f"{vol_color} {vol}x")
+    st.divider()
 
 # RUN BOT
 if run_bot:
@@ -257,7 +405,12 @@ if run_bot:
         progress = st.progress(0)
         for i, (name, data) in enumerate(prices.items()):
             with st.spinner(f"Analyzing {name}..."):
-                decision = get_ai_decision(name, data["price"], api_key)
+                decision = get_ai_decision(
+    name, 
+    data["price"], 
+    api_key,
+    data.get("indicators")
+)
                 result = execute_trade(wallet, name, data["symbol"], data["price"], decision)
                 results.append((name, data["price"], decision, result))
                 if decision != "HOLD":
@@ -306,7 +459,12 @@ if api_key:
     cols = st.columns(5)
     for i, (name, data) in enumerate(prices.items()):
         with cols[i]:
-            decision = get_ai_decision(name, data["price"], api_key)
+            decision = get_ai_decision(
+    name,
+    data["price"],
+    api_key,
+    data.get("indicators")
+)
             if decision == "BUY":
                 st.success(f"**{name}**\n\n🟢 BUY")
             elif decision == "SELL":
